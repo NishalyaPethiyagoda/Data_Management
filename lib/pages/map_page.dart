@@ -6,6 +6,8 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:location/location.dart' as location; // Use 'location' as the prefix for the location package
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'package:mobile_app_2/consts.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class MapPage extends StatefulWidget {
   const MapPage({Key? key}) : super(key: key);
@@ -22,7 +24,8 @@ class _MapPageState extends State<MapPage> {
 
   final Completer<GoogleMapController> _mapController =
   Completer<GoogleMapController>();
-  static const LatLng origin = LatLng(6.927, 79.861);
+
+  static const LatLng origin = LatLng( 39.115, -77.166);
   static const LatLng destination = LatLng(7.2906, 80.6337);
 
   Map<PolylineId, Polyline> polylines = {};
@@ -49,25 +52,122 @@ class _MapPageState extends State<MapPage> {
           ? const Center(
         child: Text("Loading..."),
       )
-          : GoogleMap(
-        onMapCreated: (GoogleMapController controller) =>
-            _mapController.complete(controller),
-        initialCameraPosition: CameraPosition(
-          target: origin,
-          zoom: 15,
-        ),
-        markers: {
-          Marker(
-            markerId: MarkerId("_currentLocation"),
-            icon: BitmapDescriptor.defaultMarker,
-            position: _currentPosition!,
-          ),
+          : FutureBuilder<Set<Marker>>(
+        future: _buildMarkers(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.done) {
+            if (snapshot.hasData) {
+              Set<Marker> markers = snapshot.data!;
+              return GoogleMap(
+                onMapCreated: (GoogleMapController controller) =>
+                    _mapController.complete(controller),
+                initialCameraPosition: CameraPosition(
+                  target: origin,
+                  zoom: 15,
+                ),
+                markers: markers,
+                polylines: Set<Polyline>.of(polylines.values),
+              );
+            } else if (snapshot.hasError) {
+              return Center(
+                child: Text('Error loading markers: ${snapshot.error}'),
+              );
+            }
+          }
+          // You can return a loading indicator or an empty GoogleMap here
+          return GoogleMap(
+            onMapCreated: (GoogleMapController controller) =>
+                _mapController.complete(controller),
+            initialCameraPosition: CameraPosition(
+              target: origin,
+              zoom: 15,
+            ),
+            polylines: Set<Polyline>.of(polylines.values),
+          );
         },
-        polylines: Set<Polyline>.of(polylines.values),
       ),
     );
+    // return Scaffold(
+    //   appBar: AppBar(
+    //     title: Text('Google Maps'),
+    //     actions: [
+    //       IconButton(
+    //         icon: Icon(Icons.directions),
+    //         onPressed: () => _showDirectionsDialog(context),
+    //       ),
+    //     ],
+    //   ),
+    //   body: _currentPosition == null
+    //       ? const Center(
+    //     child: Text("Loading..."),
+    //   )
+    //       : GoogleMap(
+    //     onMapCreated: (GoogleMapController controller) =>
+    //         _mapController.complete(controller),
+    //     initialCameraPosition: CameraPosition(
+    //       target: origin,
+    //       zoom: 15,
+    //     ),
+    //     markers: {
+    //       Marker(
+    //         markerId: MarkerId("_currentLocation"),
+    //         icon: BitmapDescriptor.defaultMarker,
+    //         position: _currentPosition!,
+    //       ),
+    //     },
+    //     polylines: Set<Polyline>.of(polylines.values),
+    //   ),
+    //   );
   }
 
+  Future<Set<Marker>> _buildMarkers() async {
+    List<Marker> markers = [];
+
+    for (LatLng location in accidentHotspots) {
+
+      markers.add(
+        Marker(
+          markerId: MarkerId(location.toString()),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+          position: location,
+          onTap: () {
+            // Handle marker tap if needed
+          },
+        ),
+      );
+    }
+
+    return markers.toSet();
+  }
+
+  Future<void> getEstimatedTime(List<LatLng> polylineCoordinates) async {
+    for (int i = 0; i < polylineCoordinates.length - 1; i++) {
+      LatLng start = polylineCoordinates[i];
+      LatLng end = polylineCoordinates[i + 1];
+
+      String apiKey = GOOGLE_API_KEY;
+      String apiUrl =
+          'https://maps.googleapis.com/maps/api/directions/json?origin=${start.latitude},${start.longitude}&destination=${end.latitude},${end.longitude}&mode=driving&key=$apiKey';
+
+      final response = await http.get(Uri.parse(apiUrl));
+
+      if (response.statusCode == 200) {
+        // Parse the response JSON to get duration information
+        final data = json.decode(response.body);
+        List<dynamic> routes = data['routes'];
+        if (routes.isNotEmpty) {
+          List<dynamic> legs = routes[0]['legs'];
+          if (legs.isNotEmpty) {
+            String durationText = legs[0]['duration']['text'];
+            print('Estimated time from point $i to ${i + 1}: $durationText');
+            // You can store the duration information as needed
+          }
+        }
+      } else {
+        print('Error getting directions: ${response.reasonPhrase}');
+      }
+    }
+  }
   Future<void> _showDirectionsDialog(BuildContext context) async {
     await showDialog(
       context: context,
@@ -108,6 +208,9 @@ class _MapPageState extends State<MapPage> {
   }
 
   Future<void> _getDirections() async {
+    // hotel sliver spring
+    // holy cross hospital germantown
+
     String startLocation = _startLocationController.text;
     String destinationLocation = _destinationLocationController.text;
 
@@ -148,7 +251,6 @@ class _MapPageState extends State<MapPage> {
     if (_serviceEnabled) {
       _serviceEnabled = await _locationController.requestService();
     } else {
-      print("hi");
       return;
     }
 
@@ -200,6 +302,12 @@ class _MapPageState extends State<MapPage> {
   }
 
   void generatePolylineFromPoints(List<LatLng> polylineCoordinates) async{
+
+    // await getEstimatedTime(polylineCoordinates);
+    // print(polylineCoordinates.length);
+    // for (LatLng point in polylineCoordinates) {
+    //   print('Latitude: ${point.latitude}, Longitude: ${point.longitude}');
+    // }
     PolylineId id = PolylineId("poly");
     Polyline polyline = Polyline(
       polylineId: id,
