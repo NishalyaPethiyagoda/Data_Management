@@ -130,9 +130,6 @@ class _MapPageState extends State<MapPage> {
           markerId: MarkerId(location.toString()),
           icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
           position: location,
-          onTap: () {
-            // Handle marker tap if needed
-          },
         ),
       );
     }
