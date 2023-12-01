@@ -299,7 +299,6 @@ class _MapPageState extends State<MapPage> {
   }
 
   void generatePolylineFromPoints(List<LatLng> polylineCoordinates) async{
-
     // await getEstimatedTime(polylineCoordinates);
     // print(polylineCoordinates.length);
     // for (LatLng point in polylineCoordinates) {
