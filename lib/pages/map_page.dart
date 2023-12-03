@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart' as geocoding;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -8,6 +7,9 @@ import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'package:mobile_app_2/consts.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:http/http.dart' as http;
+
+import '../CoordinateClass.dart';
 
 class MapPage extends StatefulWidget {
   const MapPage({Key? key}) : super(key: key);
@@ -21,6 +23,7 @@ class _MapPageState extends State<MapPage> {
   LatLng? _currentPosition;
   TextEditingController _startLocationController = TextEditingController();
   TextEditingController _destinationLocationController = TextEditingController();
+  StreamController<Set<Marker>> _markersController = StreamController<Set<Marker>>();
 
   final Completer<GoogleMapController> _mapController =
   Completer<GoogleMapController>();
@@ -35,6 +38,7 @@ class _MapPageState extends State<MapPage> {
     super.initState();
     getLocationUpdates();
   }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -51,27 +55,25 @@ class _MapPageState extends State<MapPage> {
           ? const Center(
         child: Text("Loading..."),
       )
-          : FutureBuilder<Set<Marker>>(
-        future: _buildMarkers(),
+          : StreamBuilder<Set<Marker>>(
+        stream: _markersController.stream,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.done) {
-            if (snapshot.hasData) {
-              Set<Marker> markers = snapshot.data!;
-              return GoogleMap(
-                onMapCreated: (GoogleMapController controller) =>
-                    _mapController.complete(controller),
-                initialCameraPosition: CameraPosition(
-                  target: origin,
-                  zoom: 15,
-                ),
-                markers: markers,
-                polylines: Set<Polyline>.of(polylines.values),
-              );
-            } else if (snapshot.hasError) {
-              return Center(
-                child: Text('Error loading markers: ${snapshot.error}'),
-              );
-            }
+          if (snapshot.hasData) {
+            Set<Marker> markers = snapshot.data!;
+            return GoogleMap(
+              onMapCreated: (GoogleMapController controller) =>
+                  _mapController.complete(controller),
+              initialCameraPosition: CameraPosition(
+                target: origin,
+                zoom: 15,
+              ),
+              markers: markers,
+              polylines: Set<Polyline>.of(polylines.values),
+            );
+          } else if (snapshot.hasError) {
+            return Center(
+              child: Text('Error loading markers: ${snapshot.error}'),
+            );
           }
           // You can return a loading indicator or an empty GoogleMap here
           return GoogleMap(
@@ -86,44 +88,26 @@ class _MapPageState extends State<MapPage> {
         },
       ),
     );
-    // return Scaffold(
-    //   appBar: AppBar(
-    //     title: Text('Google Maps'),
-    //     actions: [
-    //       IconButton(
-    //         icon: Icon(Icons.directions),
-    //         onPressed: () => _showDirectionsDialog(context),
-    //       ),
-    //     ],
-    //   ),
-    //   body: _currentPosition == null
-    //       ? const Center(
-    //     child: Text("Loading..."),
-    //   )
-    //       : GoogleMap(
-    //     onMapCreated: (GoogleMapController controller) =>
-    //         _mapController.complete(controller),
-    //     initialCameraPosition: CameraPosition(
-    //       target: origin,
-    //       zoom: 15,
-    //     ),
-    //     markers: {
-    //       Marker(
-    //         markerId: MarkerId("_currentLocation"),
-    //         icon: BitmapDescriptor.defaultMarker,
-    //         position: _currentPosition!,
-    //       ),
-    //     },
-    //     polylines: Set<Polyline>.of(polylines.values),
-    //   ),
-    //   );
   }
 
-  Future<Set<Marker>> _buildMarkers() async {
+  @override
+  void dispose() {
+    _markersController.close();
+    super.dispose();
+  }
+
+  Future<void> _buildMarkers(List<LatLng> predictions, List<LatLng> hotspots) async {
     List<Marker> markers = [];
-
-    for (LatLng location in accidentHotspots) {
-
+    for (LatLng location in hotspots) {
+      markers.add(
+        Marker(
+          markerId: MarkerId(location.toString()),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+          position: location,
+        ),
+      );
+    }
+    for (LatLng location in predictions) {
       markers.add(
         Marker(
           markerId: MarkerId(location.toString()),
@@ -132,8 +116,7 @@ class _MapPageState extends State<MapPage> {
         ),
       );
     }
-
-    return markers.toSet();
+    _markersController.add(markers.toSet());
   }
 
   Future<void> getEstimatedTime(List<LatLng> polylineCoordinates) async {
@@ -164,24 +147,29 @@ class _MapPageState extends State<MapPage> {
       }
     }
   }
+
   Future<void> _showDirectionsDialog(BuildContext context) async {
     await showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
           title: Text('Enter Directions'),
-          content: Column(
-            children: [
-              TextField(
-                controller: _startLocationController,
-                decoration: InputDecoration(labelText: 'Start Location'),
+          content: Scrollbar(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _startLocationController,
+                    decoration: InputDecoration(labelText: 'Start Location'),
+                  ),
+                  TextField(
+                    controller: _destinationLocationController,
+                    decoration:
+                    InputDecoration(labelText: 'Destination Location'),
+                  ),
+                ],
               ),
-              TextField(
-                controller: _destinationLocationController,
-                decoration:
-                InputDecoration(labelText: 'Destination Location'),
-              ),
-            ],
+            ),
           ),
           actions: [
             TextButton(
@@ -203,9 +191,85 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
+  Future<Map<String, List<LatLng>>> sendCoordinatesToServer(List<LatLng> coordinates) async {
+    DateTime now = DateTime.now();
+    String formattedDateTime = '${now.month}/${now.day}/${now.year} ${now.hour}:${now.minute}';
+
+    // Format coordinates as a list of lists [latitude, longitude]
+    List<List<double>> formattedCoordinates = coordinates
+        .map((LatLng point) => [point.latitude, point.longitude])
+        .toList();
+
+    // Create the request body as JSON
+    Map<String, dynamic> requestBody = {
+      'Date_Time': formattedDateTime,
+      'Coordinates': formattedCoordinates
+    };
+
+    String requestBodyJson = jsonEncode(requestBody);
+
+    // Replace the URL with the actual URL of your Flask server
+    String apiUrl = 'http://192.168.42.116:5000/predict';
+
+    try {
+      // Send POST request
+      http.Response response = await http.post(
+        Uri.parse(apiUrl),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: requestBodyJson,
+      );
+
+      // Parse the response
+      if (response.statusCode == 200) {
+        // If the request is successful (HTTP 200 OK), parse the response as a list of integers
+        Map<String, dynamic> jsonResponse = jsonDecode(response.body);
+
+        if (jsonResponse.containsKey('accident_hotspots') && jsonResponse.containsKey('accident_predictions')) {
+          List<dynamic> hotspotsResult = jsonResponse['accident_hotspots'];
+          List<dynamic> predictionsResult = jsonResponse['accident_predictions'];
+
+          // Convert the result to a list of lists of LatLng
+          List<List<LatLng>> hotspotsList = hotspotsResult
+              .map((coordinate) => [
+            LatLng(coordinate[0], coordinate[1]),
+          ])
+              .toList();
+
+          List<List<LatLng>> predictionsList = predictionsResult
+              .map((coordinate) => [
+            LatLng(coordinate[0], coordinate[1]),
+          ])
+              .toList();
+          List<LatLng> latLngHotspotsResult = hotspotsResult.map((coord) => LatLng(coord[0], coord[1])).toList();
+          List<LatLng> latLngPredictionsResult = predictionsResult.map((coord) => LatLng(coord[0], coord[1])).toList();
+          return {
+            'hotspots': latLngHotspotsResult,
+            'predictions': latLngPredictionsResult,
+          };
+        }
+        else {
+          return {
+            'hotspots': [],
+            'predictions': [],
+          };
+        }
+      }
+      else {
+        return {
+          'hotspots': [],
+          'predictions': [],
+        };
+      }
+    } catch (e) {
+      return {
+        'hotspots': [],
+        'predictions': [],
+      };
+    }
+  }
   Future<void> _getDirections() async {
-    // hotel sliver spring
-    // holy cross hospital germantown
 
     String startLocation = _startLocationController.text;
     String destinationLocation = _destinationLocationController.text;
@@ -229,6 +293,25 @@ class _MapPageState extends State<MapPage> {
       await getPolylinePoints(startLatLng, destinationLatLng);
 
       if (coordinates.isNotEmpty) {
+        Map<String, List<LatLng>> result = await sendCoordinatesToServer(coordinates);
+
+        List<LatLng> predictions = result['predictions'] ?? [];
+        List<LatLng> hotspots = result['hotspots'] ?? [];
+
+        print(predictions.length);
+        print(hotspots.length);
+
+        if ((predictions != null && predictions.isNotEmpty)&& (hotspots != null && hotspots.isNotEmpty)) {
+          _buildMarkers(predictions, hotspots);
+          print("hi");
+        }
+        else if(hotspots == null && hotspots.isEmpty) {
+          _buildMarkers(predictions, []);
+        }
+        else if(predictions == null && predictions.isEmpty) {
+          _buildMarkers([], hotspots);
+        }
+
         generatePolylineFromPoints(coordinates);
         _cameraToPosition(startLatLng);
       } else {
@@ -237,36 +320,6 @@ class _MapPageState extends State<MapPage> {
     } else {
       print('Error: Unable to retrieve location coordinates');
     }
-  }
-
-  Future<void> getLocationUpdates() async {
-    bool _serviceEnabled;
-    location.PermissionStatus _permissionGranted;
-
-    _serviceEnabled = await _locationController.serviceEnabled();
-    if (_serviceEnabled) {
-      _serviceEnabled = await _locationController.requestService();
-    } else {
-      return;
-    }
-
-    _permissionGranted = await _locationController.hasPermission();
-    if (_permissionGranted == location.PermissionStatus.denied) {
-      _permissionGranted = await _locationController.requestPermission();
-      if (_permissionGranted != location.PermissionStatus.granted) {
-        return;
-      }
-    }
-    _locationController.onLocationChanged
-        .listen((location.LocationData currentLocation) {
-      if (currentLocation.latitude != null &&
-          currentLocation.longitude != null) {
-        setState(() {
-          _currentPosition =
-              LatLng(currentLocation.latitude!, currentLocation.longitude!);
-        });
-      }
-    });
   }
 
   Future<List<LatLng>> getPolylinePoints(LatLng startLocation, LatLng destinationLocation) async{
@@ -314,6 +367,37 @@ class _MapPageState extends State<MapPage> {
       polylines[id] = polyline;
     });
   }
+
+  Future<void> getLocationUpdates() async {
+    bool _serviceEnabled;
+    location.PermissionStatus _permissionGranted;
+
+    _serviceEnabled = await _locationController.serviceEnabled();
+    if (_serviceEnabled) {
+      _serviceEnabled = await _locationController.requestService();
+    } else {
+      return;
+    }
+
+    _permissionGranted = await _locationController.hasPermission();
+    if (_permissionGranted == location.PermissionStatus.denied) {
+      _permissionGranted = await _locationController.requestPermission();
+      if (_permissionGranted != location.PermissionStatus.granted) {
+        return;
+      }
+    }
+    _locationController.onLocationChanged
+        .listen((location.LocationData currentLocation) {
+      if (currentLocation.latitude != null &&
+          currentLocation.longitude != null) {
+        setState(() {
+          _currentPosition =
+              LatLng(currentLocation.latitude!, currentLocation.longitude!);
+        });
+      }
+    });
+  }
+
   Future<void> _cameraToPosition (LatLng pos) async {
     final GoogleMapController controller = await _mapController.future;
     CameraPosition _newCameraPosition = CameraPosition(target: pos, zoom: 15  );

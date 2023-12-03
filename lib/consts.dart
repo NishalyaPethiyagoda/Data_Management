@@ -2,6 +2,9 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 const String GOOGLE_API_KEY = 'AIzaSyCA5oO5WKylMeHRyDhrK0fNlxdCHkNARCk';
 
+// hotel sliver spring
+// holy cross hospital germantown
+
 const List <LatLng> accidentHotspots = [LatLng (39.288, -77.207),
   LatLng (39.056, -76.962), LatLng (38.998, -77.027), LatLng (39.023, -77.045), LatLng (39.02, -77.003),
   LatLng (39.057, -77.151), LatLng (39.143, -77.214), LatLng (39.008, -77.021), LatLng (39.169, -77.19), LatLng (39.041, -77.047),
@@ -1014,3 +1017,36 @@ const List <LatLng> accidentHotspots = [LatLng (39.288, -77.207),
   // LatLng (39.18, -77.26), LatLng (39.042, -76.981), LatLng (39.053, -76.99), LatLng (39.059, -77.07), LatLng (39.026, -77.072),
   // LatLng (38.969, -77.13), LatLng (39.07, -77.058), LatLng (39.056, -77.053), LatLng (39.094, -77.233), LatLng (39.178, -77.261),
   LatLng (39.241, -77.282), LatLng (39.029, -77.076)];
+
+
+// return Scaffold(
+//   appBar: AppBar(
+//     title: Text('Google Maps'),
+//     actions: [
+//       IconButton(
+//         icon: Icon(Icons.directions),
+//         onPressed: () => _showDirectionsDialog(context),
+//       ),
+//     ],
+//   ),
+//   body: _currentPosition == null
+//       ? const Center(
+//     child: Text("Loading..."),
+//   )
+//       : GoogleMap(
+//     onMapCreated: (GoogleMapController controller) =>
+//         _mapController.complete(controller),
+//     initialCameraPosition: CameraPosition(
+//       target: origin,
+//       zoom: 15,
+//     ),
+//     markers: {
+//       Marker(
+//         markerId: MarkerId("_currentLocation"),
+//         icon: BitmapDescriptor.defaultMarker,
+//         position: _currentPosition!,
+//       ),
+//     },
+//     polylines: Set<Polyline>.of(polylines.values),
+//   ),
+//   );
